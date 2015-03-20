@@ -49,6 +49,11 @@ import java.io.InputStreamReader;
 import java.net.URL;
 import java.net.URLConnection;
 
+import saiboten.no.spotifytestapp.callbacks.UpdateMetaDataCallback;
+import saiboten.no.spotifytestapp.tasks.DownloadImageTask;
+import saiboten.no.spotifytestapp.tasks.GetSongByRestTask;
+import saiboten.no.spotifytestapp.tasks.GetSongInfoByRestTask;
+
 public class MainActivity extends Activity {
 
     // Request code will be used to verify if result comes from the login activity. Can be set to any integer.
@@ -58,19 +63,19 @@ public class MainActivity extends Activity {
 
     private Spotify spotify = null;
 
-    Handler handler = new Handler();
+    private Handler handler = new Handler();
 
     private ProgressBar songProgress;
 
-    ImageButton playpausebutton;
+    private ImageButton playpausebutton;
 
     private TextView timePlayed;
 
-    private TextView songLength;
+    public TextView songLength;
 
     private EditText playlist;
 
-    private int songDurationSeconds = 100;
+    public int songDurationSeconds = 100;
 
     private int secondsPlayedTotal = 0;
 
@@ -244,7 +249,7 @@ public class MainActivity extends Activity {
         if (playlistText != null) {
             url += playlistText;
             Log.d("MainActivity", "Complete url: " + url);
-            new GetSongByRestTask().execute(url);
+            new GetSongByRestTask(this).execute(url);
         }
     }
 
@@ -266,23 +271,10 @@ public class MainActivity extends Activity {
     }
 
     public void updateSongMetadata() {
-        spotifyPlayerHandler.getPlayer().getPlayerState(new PlayerStateCallback() {
-            @Override
-            public void onPlayerState(PlayerState playerState) {
-                songDurationSeconds = playerState.durationInMs/1000;
-                int minutes = (playerState.durationInMs/1000)/60;
-                int seconds = (playerState.durationInMs/1000)%60;
-
-                songLength.setText(minutes + ":" + String.format("%02d",seconds));
-                String trackId = playerState.trackUri.substring(14,playerState.trackUri.length());
-                Log.d("MainActivity", "Track uri: " + trackId);
-
-                new GetSongInfoByRestTask().execute("https://api.spotify.com/v1/tracks/" + trackId );
-            }
-        });
+        spotifyPlayerHandler.getPlayer().getPlayerState(new UpdateMetaDataCallback(this));
     }
 
-    private void updateSongInfo(String jsonFromWebApi) {
+    public void updateSongInfo(String jsonFromWebApi) {
         Log.d("MainActivity", "Json: " + jsonFromWebApi);
 
         try {
@@ -301,92 +293,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    private class GetSongByRestTask extends AsyncTask<String, Void, String> {
-
-        private Exception exception;
-
-        protected String doInBackground(String... urls) {
-            String url = urls[0];
-
-            String returnedData = null;
-
-            try {
-                HttpClient httpClient = new DefaultHttpClient();
-                HttpGet httpGet = new HttpGet(url);
-                HttpResponse httpResponse = httpClient.execute(httpGet);
-                HttpEntity httpEntity = httpResponse.getEntity();
-
-                InputStream inputStream = httpEntity.getContent();
-
-                BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
-                StringBuilder stringBuilder = new StringBuilder();
-
-                String ligneLue = bufferedReader.readLine();
-                while (ligneLue != null) {
-                    stringBuilder.append(ligneLue + " \n");
-                    ligneLue = bufferedReader.readLine();
-                }
-                bufferedReader.close();
-
-                returnedData = stringBuilder.toString();
-
-
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-
-            Log.d("MainActivity", "Returned json: " + returnedData);
-            return returnedData;
-        }
-
-        protected void onPostExecute(String result) {
-            Log.d("MainActivity", "onPostExecute: result: " + result);
-            playNewSong(result);
-        }
-    }
-
-    private class GetSongInfoByRestTask extends AsyncTask<String, Void, String> {
-
-        private Exception exception;
-
-        protected String doInBackground(String... urls) {
-            String url = urls[0];
-
-            String returnedData = null;
-
-            try {
-                HttpClient httpClient = new DefaultHttpClient();
-                HttpGet httpGet = new HttpGet(url);
-                HttpResponse httpResponse = httpClient.execute(httpGet);
-                HttpEntity httpEntity = httpResponse.getEntity();
-
-                InputStream inputStream = httpEntity.getContent();
-
-                BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
-                StringBuilder stringBuilder = new StringBuilder();
-
-                String ligneLue = bufferedReader.readLine();
-                while (ligneLue != null) {
-                    stringBuilder.append(ligneLue + " \n");
-                    ligneLue = bufferedReader.readLine();
-                }
-                bufferedReader.close();
-
-                returnedData = stringBuilder.toString();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-
-            Log.d("MainActivity", "Song Info Spotify Web API - Returned json: " + returnedData);
-            return returnedData;
-        }
-
-        protected void onPostExecute(String result) {
-            Log.d("MainActivity", "onPostExecute spotify web api: result: " + result);
-            updateSongInfo(result);
-        }
-    }
-
     private class UpdateTime implements Runnable {
 
         @Override
@@ -399,15 +305,15 @@ public class MainActivity extends Activity {
 
                             secondsPlayedTotal++;
 
-                            int progress = (secondsPlayedTotal*100/songDurationSeconds);
+                            int progress = (secondsPlayedTotal * 100 / songDurationSeconds);
 
-                            Log.d("Time","Updating progress status: " + progress);
+                            Log.d("Time", "Updating progress status: " + progress);
                             songProgress.setProgress(progress);
 
                             seconds++;
-                            if(seconds >= 60) {
+                            if (seconds >= 60) {
                                 seconds = 0;
-                                minutes ++;
+                                minutes++;
                             }
 
                             timePlayed.setText(minutes + ":" + String.format("%02d", seconds));
@@ -417,31 +323,6 @@ public class MainActivity extends Activity {
             }
 
             new android.os.Handler().postDelayed(new UpdateTime(), 1000);
-        }
-    }
-
-    private class DownloadImageTask extends AsyncTask<String, Void, Bitmap> {
-        ImageView bmImage;
-
-        public DownloadImageTask(ImageView bmImage) {
-            this.bmImage = bmImage;
-        }
-
-        protected Bitmap doInBackground(String... urls) {
-            String urldisplay = urls[0];
-            Bitmap mIcon11 = null;
-            try {
-                InputStream in = new java.net.URL(urldisplay).openStream();
-                mIcon11 = BitmapFactory.decodeStream(in);
-            } catch (Exception e) {
-                Log.e("Error", e.getMessage());
-                e.printStackTrace();
-            }
-            return mIcon11;
-        }
-
-        protected void onPostExecute(Bitmap result) {
-            bmImage.setImageBitmap(result);
         }
     }
 
